@@ -99,9 +99,13 @@ label{display:block;font-size:12px;color:var(--sub);margin:12px 0 4px}
 .scoreboard{background:var(--deep);border:1px solid var(--line);border-radius:12px;margin:10px 0;
   padding:14px 10px;display:grid;grid-template-columns:1fr auto auto auto 1fr;align-items:center;gap:8px}
 .sb-team{font-size:13px;text-align:center;font-weight:600;line-height:1.4;overflow-wrap:anywhere}
-.sb-score{width:62px;font-size:30px;text-align:center;color:var(--amber);
+.sb-score{width:62px;min-height:48px;font-size:30px;text-align:center;color:var(--amber);
   background:#08130C;border:1px solid var(--line);border-radius:8px;padding:4px 2px;
-  font-family:"DotGothic16",monospace}
+  font-family:"DotGothic16",monospace;display:flex;align-items:center;justify-content:center}
+input.inn{width:36px;padding:7px 1px;text-align:center;font-size:15px}
+.lscore thead th{font-family:"DotGothic16",monospace;font-size:12px;color:var(--sub)}
+.lscore .pname{max-width:96px}
+.lstot{font-family:"DotGothic16",monospace;font-size:17px;color:var(--amber)}
 .sb-dash{color:var(--sub);font-size:22px;font-family:"DotGothic16",monospace}
 
 /* stat tables */
@@ -388,10 +392,34 @@ function initGameOrderPos(T,m){
   while(o.length<9)o.push('');
   return o.slice(0,9);
 }
+function readInn(side){
+  const a=[];
+  document.querySelectorAll('input.inn[data-side="'+side+'"]').forEach(el=>{
+    const v=parseInt(el.value,10);a.push(isNaN(v)?null:v);
+  });
+  return a;
+}
 function stashDraft(){
   route.draft=collectFormStats();
-  const e1=document.getElementById('s1'),e2=document.getElementById('s2');
-  if(e1)route.ds1=e1.value;if(e2)route.ds2=e2.value;
+  const a=readInn(1),b=readInn(2);
+  if(a.length)route.inn1=a;
+  if(b.length)route.inn2=b;
+}
+function addInning(){
+  stashDraft();
+  route.innCount=Math.min((route.innCount||9)+1,15);
+  render();
+}
+function updLS(){
+  [1,2].forEach(side=>{
+    const arr=readInn(side);
+    const any=arr.some(v=>v!=null);
+    const sum=arr.reduce((x,v)=>x+(v||0),0);
+    ['ls-t'+side,'hs'+side].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.textContent=any?sum:(el.getAttribute('data-old')||'-');
+    });
+  });
 }
 function setGamePos(side,i,val){
   stashDraft();
@@ -475,8 +503,35 @@ function renderGame(id,ri,mi){
     route.o1=initGameOrder(T1,m);route.o2=initGameOrder(T2,m);
     route.op1=initGameOrderPos(T1,m);route.op2=initGameOrderPos(T2,m);
     route.xb1=[];route.xb2=[];route.xp1=[];route.xp2=[];
+    route.inn1=(m.innings&&m.innings.a)?m.innings.a.slice():[];
+    route.inn2=(m.innings&&m.innings.b)?m.innings.b.slice():[];
+    route.innCount=Math.max(9,route.inn1.length,route.inn2.length);
   }
   const src=route.draft||m.stats;
+  const innN=route.innCount||9;
+  const sumInn=arr=>arr.reduce((x,v)=>x+(v||0),0);
+  const anyInn=route.inn1.some(v=>v!=null)||route.inn2.some(v=>v!=null);
+  const tot=(arr,old)=>{
+    const any=arr.some(v=>v!=null);
+    return any?sumInn(arr):(old==null?'-':old);
+  };
+  const oldAttr=old=>' data-old="'+(old==null?'-':old)+'"';
+  const lsCells=(side,arr)=>{
+    let h='';
+    for(let i=0;i<innN;i++){
+      const v=arr[i];
+      h+='<td><input class="cell inn" data-side="'+side+'" data-i="'+i+'" type="number" min="0" inputmode="numeric" value="'+(v==null?'':v)+'" oninput="updLS()"></td>';
+    }
+    return h;
+  };
+  const lineScore='<div class="card"><div class="tblwrap"><table class="stbl lscore"><thead><tr><th class="pname"></th>'
+    +Array.from({length:innN},(_,i)=>'<th>'+(i+1)+'</th>').join('')
+    +'<th>計</th></tr></thead><tbody>'
+    +'<tr><th class="pname">'+esc(T1.name)+'</th>'+lsCells(1,route.inn1)+'<td class="lstot" id="ls-t1"'+oldAttr(m.s1)+'>'+tot(route.inn1,m.s1)+'</td></tr>'
+    +'<tr><th class="pname">'+esc(T2.name)+'</th>'+lsCells(2,route.inn2)+'<td class="lstot" id="ls-t2"'+oldAttr(m.s2)+'>'+tot(route.inn2,m.s2)+'</td></tr>'
+    +'</tbody></table></div>'
+    +(innN<15?'<div class="btnrow" style="margin-top:8px"><button class="btn ghost sm" onclick="addInning()">+ 延長回を追加</button></div>':'')
+    +'<p class="note" style="margin:8px 2px 0">回ごとの得点を入力すると合計が自動計算される。未消化の回(サヨナラの9回裏など)は空欄のままでいい。</p></div>';
   const teamBlock=(T,label,side)=>{
     const ord=side===1?route.o1:route.o2;
     const op=side===1?route.op1:route.op2;
@@ -538,20 +593,30 @@ function renderGame(id,ri,mi){
     +'<button class="btn ghost sm" onclick="go(\'tournament\',{id:\''+t.id+'\'})">← 対戦表</button></div>'
     +'<div class="scoreboard">'
     +'<div class="sb-team">'+esc(T1.name)+'</div>'
-    +'<input id="s1" class="sb-score" type="number" min="0" inputmode="numeric" value="'+(route.ds1!=null?route.ds1:(m.s1==null?'':m.s1))+'">'
+    +'<div id="hs1" class="sb-score"'+oldAttr(m.s1)+'>'+tot(route.inn1,m.s1)+'</div>'
     +'<div class="sb-dash">-</div>'
-    +'<input id="s2" class="sb-score" type="number" min="0" inputmode="numeric" value="'+(route.ds2!=null?route.ds2:(m.s2==null?'':m.s2))+'">'
+    +'<div id="hs2" class="sb-score"'+oldAttr(m.s2)+'>'+tot(route.inn2,m.s2)+'</div>'
     +'<div class="sb-team">'+esc(T2.name)+'</div>'
     +'</div>'
+    +lineScore
     +teamBlock(T1,'先攻',1)+teamBlock(T2,'後攻',2)
     +'<div class="btnrow"><button class="btn" style="flex:1" onclick="saveGame(\''+id+'\','+ri+','+mi+')">試合結果を保存</button></div>'
     +'<p class="note">成績を入力した選手だけが出場(試合数1)としてカウントされる。空欄は0扱い。投球回は「回」+「+/3」(アウト数)で入力。追加した選手は、成績を入れずに保存すれば次回は表示されない。</p>';
 }
 async function saveGame(id,ri,mi){
   const t=getTournament(id);const m=t.rounds[ri][mi];
-  const s1=parseInt($('#s1').value,10),s2=parseInt($('#s2').value,10);
-  if(isNaN(s1)||isNaN(s2)){toast('スコアを入力して');return;}
-  if(s1===s2){toast('同点では保存できない。決着まで入力して');return;}
+  const ia=readInn(1),ib=readInn(2);
+  const anyInn=ia.some(v=>v!=null)||ib.some(v=>v!=null);
+  let s1,s2;
+  if(anyInn){
+    s1=ia.reduce((x,v)=>x+(v||0),0);
+    s2=ib.reduce((x,v)=>x+(v||0),0);
+  }else if(m.s1!=null){
+    s1=m.s1;s2=m.s2;
+  }else{
+    toast('回ごとの得点を入力して');return;
+  }
+  if(s1===s2){toast('同点では保存できない。延長回を追加して決着まで入力して');return;}
   const newWinner=s1>s2?m.t1:m.t2;
   if(m.done&&m.winner!==newWinner&&downstreamHasResult(t,ri,mi)){
     if(!await askConfirm('勝者が変わるため、以降の回戦の結果がリセットされる。続ける?','続ける'))return;
@@ -559,6 +624,7 @@ async function saveGame(id,ri,mi){
   const stats=collectFormStats();
   const prevWinner=m.done?m.winner:null;
   m.s1=s1;m.s2=s2;m.stats=stats;m.done=true;m.winner=newWinner;
+  if(anyInn)m.innings={a:ia,b:ib};
   m.order=m.order||{};
   if(route.o1)m.order[m.t1]=route.o1.slice();
   if(route.o2)m.order[m.t2]=route.o2.slice();
