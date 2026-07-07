@@ -82,18 +82,24 @@ label{display:block;font-size:12px;color:var(--sub);margin:12px 0 4px}
 .btnrow input{flex:1;width:auto}
 
 /* bracket */
-.bracket{display:flex;overflow-x:auto;gap:14px;padding:8px 2px 16px;-webkit-overflow-scrolling:touch}
-.round{min-width:205px;display:flex;flex-direction:column;justify-content:space-around;gap:12px}
-.rname{color:var(--sub);font-size:12px;text-align:center;letter-spacing:.18em;font-family:"DotGothic16",monospace}
-.match{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.bracket{overflow-x:auto;padding:8px 2px 16px;-webkit-overflow-scrolling:touch}
+.bwrap{position:relative}
+.blines{position:absolute;left:0;pointer-events:none}
+.blines path{fill:none;stroke:rgba(232,228,216,.38);stroke-width:1.5}
+.blines path.won{stroke:var(--amber);stroke-width:2}
+.rname{color:var(--sub);font-size:12px;text-align:center;letter-spacing:.18em;font-family:"DotGothic16",monospace;position:absolute;top:0}
+.bmatch{position:absolute}
+.match{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px 8px;
+  height:100%;display:flex;flex-direction:column;justify-content:center;gap:2px;box-sizing:border-box}
 .match.done{border-color:rgba(255,180,84,.4)}
-.match.bye{opacity:.6}
+.match.ready{border-color:rgba(255,180,84,.65);border-style:dashed}
+.match.bye{opacity:.55}
 .match.tap:active{transform:scale(.98)}
 .mrow{display:flex;justify-content:space-between;align-items:center;gap:6px;
-  padding:5px 2px 5px 8px;font-size:14px;border-left:3px solid transparent}
+  padding:2px 2px 2px 7px;font-size:13px;border-left:3px solid transparent;min-width:0}
+.mrow>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mrow.win{border-left-color:var(--amber);font-weight:700}
-.mrow .score{min-width:26px;text-align:right;font-size:18px;color:var(--amber);font-family:"DotGothic16",monospace}
-.mhint{font-size:11px;color:var(--sub);text-align:center;margin-top:3px}
+.mrow .score{min-width:22px;text-align:right;font-size:15px;color:var(--amber);font-family:"DotGothic16",monospace;flex:none}
 
 /* scoreboard on game entry */
 .scoreboard{background:var(--deep);border:1px solid var(--line);border-radius:12px;margin:10px 0;
@@ -340,11 +346,44 @@ function renderT(id){
   const t=getTournament(id);if(!t){go('home');return;}
   const fin=t.rounds[t.rounds.length-1][0];
   const champ=fin.done?fin.winner:null;
-  const cols=t.rounds.map((r,ri)=>'<div class="round"><div class="rname">'+roundName(ri,t.rounds.length)+'</div>'
-    +r.map((m,mi)=>matchCard(t,ri,mi)).join('')+'</div>').join('');
+  const CW=170,CH=56,GX=36,U=CH+18,LBL=28;
+  const R=t.rounds.length,n0=t.rounds[0].length;
+  const ys=[];
+  for(let r=0;r<R;r++){
+    ys[r]=[];
+    for(let i=0;i<t.rounds[r].length;i++){
+      ys[r][i]=(r===0)?i*U:(ys[r-1][2*i]+ys[r-1][2*i+1])/2;
+    }
+  }
+  const W=R*(CW+GX)-GX;
+  const areaH=(n0-1)*U+CH;
+  let lines='';
+  for(let r=0;r<R-1;r++){
+    for(let i=0;i<t.rounds[r].length;i++){
+      const m=t.rounds[r][i];
+      const x1=r*(CW+GX)+CW, y1=ys[r][i]+CH/2;
+      const xp=(r+1)*(CW+GX), yp=ys[r+1][Math.floor(i/2)]+CH/2;
+      const xm=x1+GX/2;
+      const won=m.done&&m.winner;
+      lines+='<path'+(won?' class="won"':'')+' d="M'+x1+' '+y1+' H'+xm+' V'+yp+' H'+xp+'"/>';
+    }
+  }
+  let labels='',cards='';
+  for(let r=0;r<R;r++){
+    labels+='<div class="rname" style="left:'+(r*(CW+GX))+'px;width:'+CW+'px">'+roundName(r,R)+'</div>';
+    for(let i=0;i<t.rounds[r].length;i++){
+      cards+='<div class="bmatch" style="left:'+(r*(CW+GX))+'px;top:'+(ys[r][i]+LBL)+'px;width:'+CW+'px;height:'+CH+'px">'
+        +matchCard(t,r,i)+'</div>';
+    }
+  }
+  const bracket='<div class="bracket"><div class="bwrap" style="width:'+W+'px;height:'+(areaH+LBL)+'px">'
+    +'<svg class="blines" width="'+W+'" height="'+areaH+'" style="top:'+LBL+'px" viewBox="0 0 '+W+' '+areaH+'">'+lines+'</svg>'
+    +labels+cards
+    +'</div></div>';
   appEl.innerHTML='<div class="pagehead"><h2>'+esc(t.name)+'</h2><span class="c-date">'+esc(t.date)+'</span></div>'
     +(champ?'<div class="champbar"><span class="pennant big">優勝 '+esc(teamName(champ))+'</span></div>':'')
-    +'<div class="bracket">'+cols+'</div>'
+    +bracket
+    +'<p class="note">枠が点線の試合をタップすると結果を入力できる。勝ち上がった試合の線はアンバー表示。</p>'
     +'<div class="btnrow">'
     +'<button class="btn ghost" onclick="go(\'stats\',{scope:\''+t.id+'\'})">この大会の個人成績</button>'
     +'<button class="btn danger ghost" onclick="delT(\''+t.id+'\')">大会を削除</button>'
@@ -360,11 +399,10 @@ function matchCard(t,ri,mi){
   const ready=!!(m.t1&&m.t2);
   const w1=m.done&&m.winner===m.t1;
   const w2=m.done&&m.winner===m.t2;
-  return '<div class="match'+(ready?' tap':'')+(m.done?' done':'')+'"'
+  return '<div class="match'+(ready?' tap':'')+(m.done?' done':'')+(ready&&!m.done?' ready':'')+'"'
     +(ready?' onclick="go(\'game\',{id:\''+t.id+'\',r:'+ri+',m:'+mi+'})"':'')+'>'
     +'<div class="mrow'+(w1?' win':'')+'"><span>'+esc(n1)+'</span><span class="score">'+(m.done?m.s1:'')+'</span></div>'
     +'<div class="mrow'+(w2?' win':'')+'"><span>'+esc(n2)+'</span><span class="score">'+(m.done?m.s2:'')+'</span></div>'
-    +(ready&&!m.done?'<div class="mhint">タップして結果入力</div>':'')
     +'</div>';
 }
 async function delT(id){
